@@ -2,6 +2,9 @@ package pusher
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -186,20 +189,20 @@ func TestIsUnauthorizedError(t *testing.T) {
 	}
 }
 
-func TestIsNotExistError(t *testing.T) {
+func TestIsNotFoundError(t *testing.T) {
 	var tcs = []struct {
 		tcID   string
 		inErr  error
 		expRes bool
 	}{
-		{"ok", newError(errTypeNotExist, fmt.Errorf("e")), true},
+		{"ok", newError(errTypeNotFound, fmt.Errorf("e")), true},
 		{"otherPushError", newError(errTypeServerProblem, fmt.Errorf("e")), false},
 		{"otherError", fmt.Errorf("e"), false},
 		{"nil", nil, false},
 	}
 	for _, tc := range tcs {
 		t.Run(tc.tcID, func(t *testing.T) {
-			assert.Equal(t, tc.expRes, IsNotExistError(tc.inErr))
+			assert.Equal(t, tc.expRes, IsNotFoundError(tc.inErr))
 		})
 	}
 }
@@ -211,13 +214,123 @@ func TestIsServerProblemError(t *testing.T) {
 		expRes bool
 	}{
 		{"ok", newError(errTypeServerProblem, fmt.Errorf("e")), true},
-		{"otherPushError", newError(errTypeNotExist, fmt.Errorf("e")), false},
+		{"otherPushError", newError(errTypeNotFound, fmt.Errorf("e")), false},
 		{"otherError", fmt.Errorf("e"), false},
 		{"nil", nil, false},
 	}
 	for _, tc := range tcs {
 		t.Run(tc.tcID, func(t *testing.T) {
 			assert.Equal(t, tc.expRes, IsServerProblemError(tc.inErr))
+		})
+	}
+}
+
+func TestIsPusherError(t *testing.T) {
+	var tcs = []struct {
+		tcID   string
+		inErr  error
+		expRes bool
+	}{
+		{"ok", newError(errTypePusher, fmt.Errorf("e")), true},
+		{"otherPushError", newError(errTypeNotFound, fmt.Errorf("e")), false},
+		{"otherError", fmt.Errorf("e"), false},
+		{"nil", nil, false},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.tcID, func(t *testing.T) {
+			assert.Equal(t, tc.expRes, IsPusherError(tc.inErr))
+		})
+	}
+}
+
+func TestAddQueryParamIfNotEmpty(t *testing.T) {
+	var tcs = []struct {
+		tcID     string
+		inVal    string
+		expExist bool
+	}{
+		{"nonEmpty", "a", true},
+		{"empty", "", false},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.tcID, func(t *testing.T) {
+			qps := url.Values{}
+			addQueryParamIfNotEmpty(&qps, "k", tc.inVal)
+			assert.Equal(t, tc.inVal, qps.Get("k"))
+		})
+	}
+}
+
+func TestPushNominal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		assert.Equal(t, req.URL.Query().Get("db"), "d")
+		assert.Equal(t, req.URL.Query().Get("consistency"), "all")
+		assert.Equal(t, req.URL.Query().Get("precision"), "h")
+		assert.Equal(t, req.URL.Query().Get("u"), "us")
+		assert.Equal(t, req.URL.Query().Get("p"), "pa")
+		assert.Equal(t, req.URL.Query().Get("rp"), "r")
+		rw.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	p, err := NewPusher(srv.URL, "d",
+		OptWithConsistency(ConsistencyAll),
+		OptWithPrecision(PrecisionHour),
+		OptWithUserPass("us", "pa"),
+		OptWithRetentionPolicy("r"),
+	)
+	assert.Nil(t, err)
+
+	err = p.Push("../testdata/sampleData.txt")
+	assert.Nil(t, err)
+}
+
+func TestPushNonExistingFile(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	p, err := NewPusher(srv.URL, "d")
+	assert.Nil(t, err)
+
+	err = p.Push("nonExistingFile.txt")
+	t.Logf("%v", err)
+	assert.True(t, IsPusherError(err))
+}
+
+func TestPushWrongStatus(t *testing.T) {
+	var tcs = []struct {
+		tcID               string
+		inStatus           int
+		expIsBadRequest    bool
+		expIsServerProblem bool
+		expIsNotFound      bool
+		expIsUnauthorized  bool
+		expIsPusher        bool
+	}{
+		{tcID: "badRequest", inStatus: http.StatusBadRequest, expIsBadRequest: true},
+		{tcID: "serverProblem", inStatus: http.StatusInternalServerError, expIsServerProblem: true},
+		{tcID: "notFound", inStatus: http.StatusNotFound, expIsNotFound: true},
+		{tcID: "unauthorized", inStatus: http.StatusUnauthorized, expIsUnauthorized: true},
+		{tcID: "pusher", inStatus: http.StatusConflict, expIsPusher: true},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.tcID, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+				rw.WriteHeader(tc.inStatus)
+			}))
+			defer srv.Close()
+
+			p, err := NewPusher(srv.URL, "d")
+			assert.Nil(t, err)
+			err = p.Push("../testdata/sampleData.txt")
+
+			assert.Equal(t, tc.expIsBadRequest, IsBadRequestError(err))
+			assert.Equal(t, tc.expIsServerProblem, IsServerProblemError(err))
+			assert.Equal(t, tc.expIsNotFound, IsNotFoundError(err))
+			assert.Equal(t, tc.expIsUnauthorized, IsUnauthorizedError(err))
+			assert.Equal(t, tc.expIsPusher, IsPusherError(err))
 		})
 	}
 }

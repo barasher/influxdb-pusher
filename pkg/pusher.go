@@ -2,22 +2,25 @@ package pusher
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"net/url"
+	"os"
 
 	"github.com/sirupsen/logrus"
 )
 
-// Consistency is a type refering to InfluxDb consistencies
+// Consistency is a type referring to InfluxDb consistencies
 type Consistency int
 
 const (
-	// ConsistencyAny is constant refering to InfluxDb "any" consistency
+	// ConsistencyAny is constant referring to InfluxDb "any" consistency
 	ConsistencyAny Consistency = iota
-	// ConsistencyOne is constant refering to InfluxDb "one"consistency
+	// ConsistencyOne is constant referring to InfluxDb "one"consistency
 	ConsistencyOne
-	// ConsistencyQuorum is constant refering to InfluxDb "quorum"consistency
+	// ConsistencyQuorum is constant referring to InfluxDb "quorum"consistency
 	ConsistencyQuorum
-	// ConsistencyAll is constant refering to InfluxDb "all"consistency
+	// ConsistencyAll is constant referring to InfluxDb "all"consistency
 	ConsistencyAll
 )
 
@@ -28,21 +31,21 @@ var consistencyToString = map[Consistency]string{
 	ConsistencyQuorum: "quorum",
 }
 
-// Precision is a type refering to InfluxDb precisions
+// Precision is a type referring to InfluxDb precisions
 type Precision int
 
 const (
-	// PrecisionNanosecond is a constant refering to nanosecond precision
+	// PrecisionNanosecond is a constant referring to nanosecond precision
 	PrecisionNanosecond Precision = iota
-	// PrecisionMicrosecond is a constant refering to microsecond precision
+	// PrecisionMicrosecond is a constant referring to microsecond precision
 	PrecisionMicrosecond
-	// PrecisionMillisecond is a constant refering to millisecond precision
+	// PrecisionMillisecond is a constant referring to millisecond precision
 	PrecisionMillisecond
-	// PrecisionSecond is a constant refering to second precision
+	// PrecisionSecond is a constant referring to second precision
 	PrecisionSecond
-	// PrecisionMinute is a constant refering to minute precision
+	// PrecisionMinute is a constant referring to minute precision
 	PrecisionMinute
-	// PrecisionHour is a constant refering to hour precision
+	// PrecisionHour is a constant referring to hour precision
 	PrecisionHour
 )
 
@@ -54,6 +57,8 @@ var precisionToString = map[Precision]string{
 	PrecisionMinute:      "m",
 	PrecisionHour:        "h",
 }
+
+var errLogsForDetails = fmt.Errorf("See logs for more details")
 
 // Pusher is a struct modeling the pusher
 type Pusher struct {
@@ -77,7 +82,7 @@ func NewPusher(baseURL string, db string, opts ...func(*Pusher) error) (*Pusher,
 	if db == "" {
 		return nil, fmt.Errorf("no database provided")
 	}
-	p := Pusher{}
+	p := Pusher{baseURL: baseURL, db: db}
 	for _, opt := range opts {
 		if err := opt(&p); err != nil {
 			return nil, fmt.Errorf("error when creating new pusher: %v", err)
@@ -138,15 +143,17 @@ type errorType int
 const (
 	errTypeBadRequest errorType = iota
 	errTypeUnauthorized
-	errTypeNotExist
+	errTypeNotFound
 	errTypeServerProblem
+	errTypePusher
 )
 
 var errorTypeToString = map[errorType]string{
 	errTypeBadRequest:    "bad request",
 	errTypeUnauthorized:  "unauthorized",
-	errTypeNotExist:      "not exist",
+	errTypeNotFound:      "not found",
 	errTypeServerProblem: "server problem",
+	errTypePusher:        "pusher error",
 }
 
 type pushError struct {
@@ -177,10 +184,10 @@ func IsUnauthorizedError(err error) bool {
 	return isErrorType(err, errTypeUnauthorized)
 }
 
-// IsNotExistError returns true if the error err is an InfluxDB not exist
+// IsNotFoundError returns true if the error err is an InfluxDB not exist
 // error
-func IsNotExistError(err error) bool {
-	return isErrorType(err, errTypeNotExist)
+func IsNotFoundError(err error) bool {
+	return isErrorType(err, errTypeNotFound)
 }
 
 // IsServerProblemError returns true if the error err is an InfluxDB server problem
@@ -189,32 +196,76 @@ func IsServerProblemError(err error) bool {
 	return isErrorType(err, errTypeServerProblem)
 }
 
+// IsPusherError returns true if the error err is a pusher error
+func IsPusherError(err error) bool {
+	return isErrorType(err, errTypePusher)
+}
+
 func newError(t errorType, err error) error {
 	return pushError{t, err}
 }
 
-func addQueryParamIfNotEmpty(u *url.URL, k string, v string) {
+func addQueryParamIfNotEmpty(qps *url.Values, k string, v string) {
 	if v != "" {
-		u.Query().Add(k, v)
+		qps.Add(k, v)
 	}
 }
 
-// Push pushes data to InfluxDB
+// Push pushes data to InfluxDB, an error will be returned if anything
+// wrong happens.
 func (p *Pusher) Push(f string) error {
+	var err error
 	u, err := url.Parse(p.baseURL)
 	if err != nil {
 		return newError(errTypeBadRequest, fmt.Errorf("error when parsing URL '%v': %v", p.baseURL, err))
 	}
-	addQueryParamIfNotEmpty(u, "db", p.db)
-	addQueryParamIfNotEmpty(u, "consistency", p.consistency)
-	addQueryParamIfNotEmpty(u, "u", p.username)
-	addQueryParamIfNotEmpty(u, "p", p.password)
-	addQueryParamIfNotEmpty(u, "precision", p.precision)
-	addQueryParamIfNotEmpty(u, "rp", p.retentionPolicy)
+	q := u.Query()
+	addQueryParamIfNotEmpty(&q, "db", p.db)
+	addQueryParamIfNotEmpty(&q, "consistency", p.consistency)
+	addQueryParamIfNotEmpty(&q, "u", p.username)
+	addQueryParamIfNotEmpty(&q, "p", p.password)
+	addQueryParamIfNotEmpty(&q, "precision", p.precision)
+	addQueryParamIfNotEmpty(&q, "rp", p.retentionPolicy)
+	u.RawQuery = q.Encode()
 	uStr := u.String()
 	logrus.Debugf("URL: %v", uStr)
 
-	//resp, err := http.Post(uStr)
+	reader, err := os.Open(f)
+	if err != nil {
+		return newError(errTypePusher, fmt.Errorf("error when reading data file '%v': %v", f, err))
+	}
+	defer reader.Close()
 
+	resp, err := http.Post(uStr, "text/plain", reader)
+	if err != nil {
+		return newError(errTypeBadRequest, fmt.Errorf("error when pushing data: %v", err))
+	}
+	defer resp.Body.Close()
+
+	return dealWithResponse(resp)
+}
+
+func dealWithResponse(resp *http.Response) error {
+	if resp.StatusCode != http.StatusNoContent {
+		var err error
+		switch resp.StatusCode {
+		case http.StatusBadRequest:
+			err = newError(errTypeBadRequest, errLogsForDetails)
+		case http.StatusInternalServerError:
+			err = newError(errTypeServerProblem, errLogsForDetails)
+		case http.StatusNotFound:
+			err = newError(errTypeNotFound, errLogsForDetails)
+		case http.StatusUnauthorized:
+			err = newError(errTypeUnauthorized, errLogsForDetails)
+		default:
+			err = newError(errTypePusher, fmt.Errorf("unexpected http status code (%v)", resp.StatusCode))
+		}
+		c, err2 := ioutil.ReadAll(resp.Body)
+		if err2 != nil {
+			return newError(errTypePusher, fmt.Errorf("error while consuming response: %v", err2))
+		}
+		logrus.Errorf("%v", string(c))
+		return err
+	}
 	return nil
 }
