@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -82,7 +83,14 @@ func NewPusher(baseURL string, db string, opts ...func(*Pusher) error) (*Pusher,
 	if db == "" {
 		return nil, fmt.Errorf("no database provided")
 	}
-	p := Pusher{baseURL: baseURL, db: db}
+
+	u := baseURL
+	if !strings.HasSuffix(u, "/") {
+		u += "/"
+	}
+	u += "write"
+
+	p := Pusher{baseURL: u, db: db}
 	for _, opt := range opts {
 		if err := opt(&p); err != nil {
 			return nil, fmt.Errorf("error when creating new pusher: %v", err)

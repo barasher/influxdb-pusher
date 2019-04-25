@@ -21,15 +21,37 @@ func TestNewPusherNominal(t *testing.T) {
 		o2Invoked = true
 		return nil
 	}
-	_, err := NewPusher("url", "db", o1, o2)
+	p, err := NewPusher("url", "db", o1, o2)
 	assert.Nil(t, err)
+	assert.Equal(t, "url/write", p.baseURL)
+	assert.Equal(t, "db", p.db)
 	assert.True(t, o1Invoked)
 	assert.True(t, o2Invoked)
 }
 
+func TestNewPusherUrlCompletion(t *testing.T) {
+	var tcs = []struct {
+		tcID   string
+		inURL  string
+		expURL string
+	}{
+		{"withoutSlash", "http://1.2.3.4:8086", "http://1.2.3.4:8086/write"},
+		{"withSlash", "http://1.2.3.4:8086/", "http://1.2.3.4:8086/write"},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.tcID, func(t *testing.T) {
+			p, err := NewPusher(tc.inURL, "db")
+			assert.Nil(t, err)
+			assert.Equal(t, tc.expURL, p.baseURL)
+		})
+	}
+}
+
 func TestNewPusherNoOpt(t *testing.T) {
-	_, err := NewPusher("url", "db")
+	p, err := NewPusher("url", "db")
 	assert.Nil(t, err)
+	assert.Equal(t, "url/write", p.baseURL)
+	assert.Equal(t, "db", p.db)
 }
 
 func TestNewPusherErrorOnOpt(t *testing.T) {
