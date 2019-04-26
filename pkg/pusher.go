@@ -28,6 +28,7 @@ const (
 	ConsistencyAll
 )
 
+// ConsistencyToString maps available consistencies to their parameter value
 var ConsistencyToString = map[Consistency]string{
 	ConsistencyAny:    "any",
 	ConsistencyAll:    "all",
