@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/barasher/influxdb-pusher.svg?branch=master)](https://travis-ci.org/barasher/influxdb-pusher)
 [![go report card](https://goreportcard.com/badge/github.com/barasher/influxdb-pusher "go report card")](https://goreportcard.com/report/github.com/barasher/influxdb-pusher)
+[![GoDoc](https://godoc.org/github.com/barasher/influxdb-pusher/pkg?status.svg)](https://godoc.org/github.com/barasher/influxdb-pusher/pkg)
 
 **influxdb-pusher** is tool that push [InfluxDB line protocol](https://docs.influxdata.com/influxdb/v1.7/write_protocols/line_protocol_tutorial/) to [InfluxDB](https://docs.influxdata.com/influxdb/v1.7/).
 
