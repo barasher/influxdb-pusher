@@ -1,3 +1,6 @@
+/*
+Package pusher is library that push InfluxDB line protocol file to InfluxDB.
+*/
 package pusher
 
 import (

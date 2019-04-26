@@ -1,6 +1,7 @@
+/*
+Package main is a command line executable that push InfluxDB line protocol file to InfluxDB.
+*/
 package main
-
-//"fmt"
 
 import (
 	"flag"
