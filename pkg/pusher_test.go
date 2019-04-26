@@ -317,8 +317,14 @@ func TestPushNonExistingFile(t *testing.T) {
 	assert.Nil(t, err)
 
 	err = p.Push("nonExistingFile.txt")
-	t.Logf("%v", err)
 	assert.True(t, IsPusherError(err))
+}
+
+func TestPushUrlProblem(t *testing.T) {
+	p, err := NewPusher("{", "d")
+	assert.Nil(t, err)
+	err = p.Push("../testdata/sampleData.txt")
+	assert.True(t, IsBadRequestError(err))
 }
 
 func TestPushWrongStatus(t *testing.T) {

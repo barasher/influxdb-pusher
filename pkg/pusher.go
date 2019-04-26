@@ -25,7 +25,7 @@ const (
 	ConsistencyAll
 )
 
-var consistencyToString = map[Consistency]string{
+var ConsistencyToString = map[Consistency]string{
 	ConsistencyAny:    "any",
 	ConsistencyAll:    "all",
 	ConsistencyOne:    "one",
@@ -50,7 +50,8 @@ const (
 	PrecisionHour
 )
 
-var precisionToString = map[Precision]string{
+// PrecisionToString maps available precisions to their parameter value
+var PrecisionToString = map[Precision]string{
 	PrecisionNanosecond:  "ns",
 	PrecisionMicrosecond: "u",
 	PrecisionMillisecond: "ms",
@@ -105,7 +106,7 @@ func OptWithConsistency(c Consistency) func(*Pusher) error {
 	return func(p *Pusher) error {
 		var v string
 		var f bool
-		if v, f = consistencyToString[c]; !f {
+		if v, f = ConsistencyToString[c]; !f {
 			return fmt.Errorf("Unknown consistency (%v)", c)
 		}
 		p.consistency = v
@@ -129,7 +130,7 @@ func OptWithPrecision(p Precision) func(*Pusher) error {
 	return func(pu *Pusher) error {
 		var v string
 		var f bool
-		if v, f = precisionToString[p]; !f {
+		if v, f = PrecisionToString[p]; !f {
 			return fmt.Errorf("Unknown precision (%v)", p)
 		}
 		pu.precision = v
