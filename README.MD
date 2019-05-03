@@ -63,6 +63,8 @@ Usage of Pusher:
     	Precision (ns|u|ms|s|m|h)
   -r string
     	Retention policy
+  -t string
+    	Timeout duration (50s, 120ms, 1m, ...)
   -u string
     	URL, required (sample: http://1.2.3.4:8086)
   -us string
@@ -77,6 +79,7 @@ Parameters :
 - **-pr** specifies the precision ot consider for the data
 - **-u** specifies the URL of the InfluxDB API
 - **-us** specifies the username to use
+- **-t** specifies the timeout (`300ms` : 300 milliseconds, `2h30m` : 2 hours and 30 minutes, ...)
 
 Return codes :
 - **0**: everything was OK

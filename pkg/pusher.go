@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -75,6 +76,7 @@ type Pusher struct {
 	consistency     string
 	precision       string
 	retentionPolicy string
+	timeout         time.Duration
 }
 
 // NewPusher instanciate a new pusher, pushing to db database and using
@@ -102,6 +104,14 @@ func NewPusher(baseURL string, db string, opts ...func(*Pusher) error) (*Pusher,
 		}
 	}
 	return &p, nil
+}
+
+// OptWithTimeout is an optional function that specifies timeout
+func OptWithTimeout(d time.Duration) func(*Pusher) error {
+	return func(p *Pusher) error {
+		p.timeout = d
+		return nil
+	}
 }
 
 // OptWithConsistency is an optional function to specify a consistency
@@ -249,7 +259,8 @@ func (p *Pusher) Push(f string) error {
 	}
 	defer reader.Close()
 
-	resp, err := http.Post(uStr, "text/plain", reader)
+	client := http.Client{Timeout: p.timeout}
+	resp, err := client.Post(uStr, "text/plain", reader)
 	if err != nil {
 		return newError(errTypeBadRequest, fmt.Errorf("error when pushing data: %v", err))
 	}

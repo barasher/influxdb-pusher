@@ -6,6 +6,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	pusher "github.com/barasher/influxdb-pusher/pkg"
 	"github.com/sirupsen/logrus"
@@ -31,6 +32,7 @@ func doMain(args []string) int {
 	url := cmd.String("u", "", "URL, required (sample: http://1.2.3.4:8086)")
 	db := cmd.String("d", "", "Database, required")
 	data := cmd.String("f", "", "File to push, required")
+	timeout := cmd.String("t", "", "Timeout duration (50s, 120ms, 1m, ...)")
 
 	err := cmd.Parse(args)
 	if err != nil {
@@ -63,6 +65,14 @@ func doMain(args []string) int {
 	}
 	if *retPol != "" {
 		opts = append(opts, pusher.OptWithRetentionPolicy(*retPol))
+	}
+	if *timeout != "" {
+		td, err := time.ParseDuration(*timeout)
+		if err != nil {
+			logrus.Errorf("error while parsing duration '%v': %v", *timeout, err)
+			return retConfFailure
+		}
+		opts = append(opts, pusher.OptWithTimeout(td))
 	}
 
 	p, err := pusher.NewPusher(*url, *db, opts...)
