@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -122,6 +123,28 @@ func TestOptWithUserPass(t *testing.T) {
 			if !tc.expErr {
 				assert.Equal(t, tc.inUser, p.username)
 				assert.Equal(t, tc.inPass, p.password)
+			}
+		})
+	}
+}
+
+func TestOptWithTimeout(t *testing.T) {
+	var tcs = []struct {
+		tcID   string
+		inT    time.Duration
+		expErr bool
+		expT   time.Duration
+	}{
+		{"5s", 5 * time.Second, false, 5 * time.Second},
+		{"0s", 0 * time.Second, false, 0 * time.Second},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.tcID, func(t *testing.T) {
+			p := Pusher{}
+			err := OptWithTimeout(tc.inT)(&p)
+			assert.Equal(t, tc.expErr, err != nil)
+			if !tc.expErr {
+				assert.Equal(t, tc.expT, p.timeout)
 			}
 		})
 	}
@@ -305,6 +328,22 @@ func TestPushNominal(t *testing.T) {
 
 	err = p.Push("../testdata/sampleData.txt")
 	assert.Nil(t, err)
+}
+
+func TestPushTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		rw.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	p, err := NewPusher(srv.URL, "d",
+		OptWithTimeout(50*time.Millisecond),
+	)
+	assert.Nil(t, err)
+
+	err = p.Push("../testdata/sampleData.txt")
+	assert.NotNil(t, err)
 }
 
 func TestPushNonExistingFile(t *testing.T) {

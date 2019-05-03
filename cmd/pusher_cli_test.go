@@ -41,6 +41,7 @@ func TestDoMainFailure(t *testing.T) {
 		{"noDatabase", []string{"-u", "a", "-f", "a"}, retConfFailure},
 		{"noFile", []string{"-u", "a", "-d", "a"}, retConfFailure},
 		{"parseError", []string{"-turlututu"}, retConfFailure},
+		{"unparsableTimeout", []string{"-u", "url", "-d", "db", "-f", "a", "-t", "bla"}, retConfFailure},
 	}
 
 	for _, tc := range tcs {
